@@ -1,4 +1,4 @@
-## ER ##
+ ER 
 
 @startuml
 entity "Клиент" as cl {
