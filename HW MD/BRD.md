@@ -91,7 +91,7 @@
 |  ... |  ...  |
 |  n |  ...  |
 
-Приложение 1 
+Приложение 2. Схема процесса.
 
 <https://drive.google.com/file/d/1LitJiJ0MwQyOzeVKaC2xykPyvkSG3vfz/view?usp=sharing>
 
