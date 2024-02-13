@@ -1,0 +1,114 @@
+КЛАДР – это классификатор адресов РФ, разработанный ФНС России.
+
+Справочник имеет 7 уровней: регион, район, город, населенный пункт, улица, дом, квартира.
+
+Обновляется на еженедельной основе.
+
+ 
+
+Задачи и цели:
+
+I. Стандартизация адресных данных подразделений в БД Банка.
+
+1. Проанализировать имеющейся набор адресов в БД.
+2. Завести перечень адресных сокращений, имеющихся в БД. В рамках текущей задачи перечень составлен на основании эмпирических данных и встроен в процедуру обработки строк.
+3. Разработать алгоритм привязки адресной информации по подразделениям к фиксированному классификатору адресов КЛАДР средствами SQL
+	3.1 разбить адрес в строке на отдельные элементы, выделив названия города и улиц.
+
+	3.2 сравнить по наименованию называния города и улиц с аналогичными данными в КЛАДР на соответствие
+
+	3.3 на основании города подтянуть код КЛАДР города, на основании связи кода города и наименования улиц – подтягивать Код КЛАДР улицы.
+
+4. Разработать проверочные отчеты, выявляющие адреса, которые не прошли стандартизацию КЛАДР
+
+5. На основании анализа проверочных отчет разработать рекомендации к заполнению БД в части адресных данных
+
+ 
+II. Поддержка и обновление справочника КЛАДР и БД Банка
+
+1. Обновлять базу КЛАДР регулярно не реже одного раза в месяц
+2. Развивать и дополнять справочник сокращений новыми сокращениями.
+
+______________________________________________________________________________________________________________
+
+КОД
+______________________________________________________________________________________________________________
+
+---добавление столбцов--
+alter table [dbo].[departments]
+add city nvarchar (255) null, 
+	street  nvarchar (255) null,
+	build nvarchar (255) null,
+	SCNAME varchar (10) null,
+	KLADR varchar (13) null,
+	KLADR_STREET varchar (17) null,
+	Index_Kladr varchar (6) null;
+
+--заполнение поля city--
+update [dbo].[departments]
+set [city] = 
+	case when charindex (',',addressString)-charindex (' ',addressString) <=0 then null
+	else SUBSTRING([addressString],charindex (' ',addressString)+1,charindex (',',addressString)-charindex (' ',addressString)-1) 
+	end;
+
+-- заполнение поля street--
+update [dbo].[departments]
+ set [street] = 
+ case when len (addressString)-charindex (',',addressString) <=0 then null
+else SUBSTRING([addressString],charindex (',',addressString)+2,len (addressString)-charindex (',',addressString)) 
+end;
+
+update [dbo].[departments]
+ set [street] = 
+ case when [street] IS NULL then null
+ else SUBSTRING([street],charindex (' ',[street])+1,charindex (',',[street])-charindex (' ',[street])-1) 
+ end;
+
+ --исправление ошибки Горный щит--
+update [dbo].[departments]
+ set [street] =  substring (addressString,charindex('ул.', addressString)+4,charindex('д.', addressString)-2-charindex('ул.', addressString)-4)
+ from departments
+ where street = 'Горный Щит';
+
+--заполнение поля build--
+update [dbo].[departments]
+set build = 
+	case when charindex (',',addressString)-charindex (' ',addressString) <=0 then null
+	else SUBSTRING([addressString],charindex ('д.',addressString),len (addressString)-charindex ('д.',addressString)+1) 
+end;
+
+--заполнение поля SCNAME при помощи внутреннего справочника сокращений--
+update [dbo].[departments]
+ set [SCNAME] = 
+ case when [addressString] like '%ул.%' then 'ул'
+	when [addressString] like '%пр-кт%' then 'пр-кт'
+	when [addressString] like '%с.%' then 'с.'
+	when [addressString] like '%пр.%' then 'пр-кт'
+	when [addressString] like '%ш.%' then 'ш'
+	when [addressString] like '%пер.%' then 'пер'
+	when [addressString] like '%б-р%' then 'б-р'
+	when [addressString] like '%пр-д%' then 'проезд'
+	when [addressString] like '%пл.%' then 'пл'
+	when [addressString] like '%пр-т%' then 'пр-кт'
+	when [addressString] like '%аллея%' then 'аллея'
+	when [addressString] like '%линия%' then 'линия'
+	else null
+ end;
+
+-- подтягивание кода кладр по городу
+update departments
+set departments.KLADR = [KLADR].[dbo].[KLADR].CODE
+from departments, [KLADR].[dbo].[KLADR]
+where departments.city= [KLADR].[dbo].[KLADR].NAME and [KLADR].[dbo].[KLADR].SOCR = 'г';
+
+-- подтягивание кода улицы
+update departments
+set departments.[KLADR_STREET] = [KLADR].[dbo].STREET.CODE
+from departments, [KLADR].[dbo].STREET
+where substring(departments.KLADR,1,11) = substring([KLADR].[dbo].STREET.CODE,1,11)
+	and departments.SCNAME=[KLADR].[dbo].STREET.SOCR
+	and departments.street=[KLADR].[dbo].STREET.NAME;
+
+--удаление последнего столбца--
+alter table [dbo].[departments]
+drop column Index_Kladr ;
